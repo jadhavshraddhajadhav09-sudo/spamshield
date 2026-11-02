@@ -1,0 +1,218 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SpamShield - Spam Message Detector</title>
+<meta name="description" content="SpamShield uses machine learning to detect spam messages. Paste any SMS, email, or text and get an instant verdict.">
+<style>
+  :root {
+    --bg: #0f1020; --card: #181a2e; --text: #e8e9f3; --muted: #9a9cb8;
+    --accent: #7c5cff; --accent2: #22d3ee; --spam: #ff4d6d; --safe: #2ee59d;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    background: radial-gradient(circle at top, #1b1d3a 0%, var(--bg) 60%);
+    color: var(--text); min-height: 100vh;
+  }
+  nav { display: flex; align-items: center; justify-content: space-between;
+        padding: 18px 6%; border-bottom: 1px solid #252846; }
+  .brand { font-weight: 700; font-size: 1.2rem; display: flex; gap: 8px; align-items: center; }
+  .container { max-width: 760px; margin: 0 auto; padding: 40px 20px 60px; }
+  h1 { font-size: 2.4rem; text-align: center; line-height: 1.2; }
+  .gradient { background: linear-gradient(90deg, var(--accent), var(--accent2));
+              -webkit-background-clip: text; background-clip: text; color: transparent; }
+  .sub { text-align: center; color: var(--muted); margin: 14px 0 32px; }
+  .card { background: var(--card); border: 1px solid #252846; border-radius: 18px;
+          padding: 24px; box-shadow: 0 10px 40px rgba(0,0,0,.35); margin-bottom: 24px; }
+  textarea { width: 100%; min-height: 150px; resize: vertical; padding: 14px; border-radius: 12px;
+             border: 1px solid #2c3055; background: #11132a; color: var(--text);
+             font-size: 1rem; font-family: inherit; }
+  textarea:focus { outline: 2px solid var(--accent); border-color: transparent; }
+  .row { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; margin-top: 14px; }
+  .spacer { flex: 1; }
+  .counter { color: var(--muted); font-size: .85rem; }
+  button { border: 0; border-radius: 10px; padding: 11px 18px; font-weight: 600; cursor: pointer;
+           color: #fff; background: linear-gradient(90deg, var(--accent), var(--accent2));
+           transition: transform .15s, opacity .2s; }
+  button:hover { transform: translateY(-1px); }
+  button:disabled { opacity: .5; cursor: not-allowed; transform: none; }
+  button.ghost { background: transparent; border: 1px solid #343862; color: var(--text); }
+  .result { display: none; }
+  .result.show { display: block; animation: fade .4s ease; }
+  @keyframes fade { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
+  .badge { display: inline-block; padding: 8px 18px; border-radius: 999px; font-weight: 800;
+           letter-spacing: 1px; }
+  .badge.spam { background: rgba(255,77,109,.15); color: var(--spam); }
+  .badge.safe { background: rgba(46,229,157,.15); color: var(--safe); }
+  .bar { height: 12px; background: #252846; border-radius: 999px; overflow: hidden; margin: 14px 0 6px; }
+  .fill { height: 100%; width: 0; border-radius: 999px; transition: width .8s ease; }
+  .chips { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
+  .chip { background: #23264a; border-radius: 999px; padding: 5px 12px; font-size: .85rem; }
+  .spinner { width: 18px; height: 18px; border: 3px solid #ffffff55; border-top-color: #fff;
+             border-radius: 50%; display: none; animation: spin .8s linear infinite; }
+  .loading .spinner { display: inline-block; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .error { display: none; background: rgba(255,77,109,.12); color: var(--spam);
+           padding: 12px 16px; border-radius: 10px; margin-top: 14px; }
+  .error.show { display: flex; justify-content: space-between; gap: 10px; }
+  .error button { background: none; padding: 0 6px; color: var(--spam); }
+  h2 { font-size: 1.1rem; margin-bottom: 12px; }
+  .history { list-style: none; }
+  .history li { display: flex; justify-content: space-between; gap: 12px; padding: 10px 0;
+                border-bottom: 1px solid #252846; font-size: .92rem; }
+  .history .msg { color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .history .tag { font-weight: 700; white-space: nowrap; }
+  .empty { color: var(--muted); font-size: .9rem; }
+</style>
+</head>
+<body>
+<nav>
+  <div class="brand">🛡️ <span>SpamShield</span></div>
+  <span class="counter" id="health">checking server...</span>
+</nav>
+
+<div class="container">
+  <h1>Is that message <span class="gradient">spam?</span></h1>
+  <p class="sub">Paste any SMS, email snippet, or message and let the AI check it.</p>
+
+  <div class="card">
+    <textarea id="message" maxlength="5000" placeholder="Paste a message here..."></textarea>
+    <div class="row">
+      <button class="ghost" id="sampleSpam">Try spam</button>
+      <button class="ghost" id="sampleSafe">Try safe message</button>
+      <span class="spacer"></span>
+      <span class="counter"><span id="count">0</span>/5000</span>
+      <button class="ghost" id="clearBtn">Clear</button>
+      <button id="checkBtn"><span class="spinner"></span><span id="btnText">Check Message</span></button>
+    </div>
+    <div class="error" id="error"><span id="errorText"></span><button id="closeError">✕</button></div>
+  </div>
+
+  <div class="card result" id="result">
+    <span class="badge" id="badge"></span>
+    <div class="bar"><div class="fill" id="fill"></div></div>
+    <div class="counter" id="confidence"></div>
+    <div class="chips" id="chips"></div>
+  </div>
+
+  <div class="card">
+    <h2>Recent checks</h2>
+    <ul class="history" id="history"><li class="empty">No checks yet.</li></ul>
+  </div>
+</div>
+
+<script>
+  const $ = id => document.getElementById(id);
+  const SAMPLES = {
+    spam: "CONGRATULATIONS! You've won a $1000 gift card. Click http://claim-prize.example now to claim before it expires!",
+    safe: "Hey, are we still meeting for lunch at 1pm tomorrow? Let me know."
+  };
+
+  function showError(msg) { $("errorText").textContent = msg; $("error").classList.add("show"); }
+  function hideError() { $("error").classList.remove("show"); }
+
+  $("message").addEventListener("input", e => { $("count").textContent = e.target.value.length; });
+  $("clearBtn").onclick = () => {
+    $("message").value = ""; $("count").textContent = "0";
+    $("result").classList.remove("show"); hideError();
+  };
+  $("sampleSpam").onclick = () => fillSample(SAMPLES.spam);
+  $("sampleSafe").onclick = () => fillSample(SAMPLES.safe);
+  $("closeError").onclick = hideError;
+  $("message").addEventListener("keydown", e => {
+    if ((e.ctrlKey || e.metaKey) && e.key === "Enter") checkMessage();
+  });
+  $("checkBtn").onclick = checkMessage;
+
+  function fillSample(text) {
+    $("message").value = text; $("count").textContent = text.length; hideError();
+  }
+
+  async function checkMessage() {
+    const message = $("message").value.trim();
+    if (!message) { showError("Please enter a message first."); return; }
+    setLoading(true); hideError();
+    try {
+      const res = await fetch("/api/predict", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ message })
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Something went wrong.");
+      showResult(data);
+      loadHistory();
+    } catch (err) {
+      showError(err.message);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  function showResult(data) {
+    const spam = data.is_spam;
+    const badge = $("badge");
+    badge.textContent = spam ? "SPAM" : "SAFE";
+    badge.className = "badge " + (spam ? "spam" : "safe");
+    const fill = $("fill");
+    fill.style.background = spam ? "var(--spam)" : "var(--safe)";
+    fill.style.width = "0%";
+    requestAnimationFrame(() => fill.style.width = data.confidence + "%");
+    $("confidence").textContent = "Confidence: " + data.confidence.toFixed(1) + "%";
+
+    const chips = $("chips");
+    chips.replaceChildren();
+    (data.suspicious_words || []).forEach(w => {
+      const c = document.createElement("span");
+      c.className = "chip"; c.textContent = w; chips.appendChild(c);
+    });
+    $("result").classList.add("show");
+  }
+
+  async function loadHistory() {
+    try {
+      const res = await fetch("/api/history");
+      const items = await res.json();
+      const list = $("history");
+      list.replaceChildren();
+      if (!items.length) {
+        const li = document.createElement("li");
+        li.className = "empty"; li.textContent = "No checks yet.";
+        list.appendChild(li); return;
+      }
+      items.forEach(item => {
+        const li = document.createElement("li");
+        const msg = document.createElement("span");
+        msg.className = "msg"; msg.textContent = item.preview;
+        const tag = document.createElement("span");
+        tag.className = "tag";
+        tag.style.color = item.label === "spam" ? "var(--spam)" : "var(--safe)";
+        tag.textContent = item.label.toUpperCase();
+        li.append(msg, tag);
+        list.appendChild(li);
+      });
+    } catch (_) { /* history is optional */ }
+  }
+
+  function setLoading(on) {
+    $("checkBtn").disabled = on;
+    $("checkBtn").classList.toggle("loading", on);
+    $("btnText").textContent = on ? "Checking..." : "Check Message";
+    document.querySelector(".spinner").style.display = on ? "inline-block" : "none";
+  }
+
+  async function checkHealth() {
+    try {
+      const res = await fetch("/api/health");
+      const data = await res.json();
+      $("health").textContent = data.model_loaded ? "● Model ready" : "● Model missing";
+      $("health").style.color = data.model_loaded ? "var(--safe)" : "var(--spam)";
+    } catch (_) { $("health").textContent = "● Server offline"; }
+  }
+
+  checkHealth();
+  loadHistory();
+</script>
+</body>
+</html>
